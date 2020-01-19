@@ -44,25 +44,29 @@ fn compile_config(config: cc::Build) {
     }
 }
 
-
-/// Build static libtcod for Linux
-#[cfg(not(feature = "dynlib"))]
-fn build_linux_static(_dst: &Path, libtcod_sources: &[& 'static str]) {
+fn config_libtcod_static() -> cc::Build {
     // Tell rust to link the produced library
     // It is important to specify this first, so that the library will be linked
     // before SDL2, as the link order matters for static libraries
     println!("cargo:rustc-link-lib=static=tcod");
     let mut config = cc::Build::new();
-    // Add dependencies
-    for include_path in &pkg_config::find_library("sdl2").unwrap().include_paths {
-        config.include(include_path);
-    }
-    // Build the library
     config.define("TCOD_SDL2", None);
     config.define("NO_OPENGL", None);
     config.define("NDEBUG", None);
     config.flag("-fno-strict-aliasing");
     config.flag("-ansi");
+    config
+}
+
+/// Build static libtcod for Linux
+#[cfg(not(feature = "dynlib"))]
+fn build_linux_static(_dst: &Path, libtcod_sources: &[&'static str]) {
+    let mut config = config_libtcod_static();
+    // Add dependencies
+    for include_path in &pkg_config::find_library("sdl2").unwrap().include_paths {
+        config.include(include_path);
+    }
+    // Build the library
     build_libtcod_objects(config, libtcod_sources);
 }
 
@@ -109,6 +113,10 @@ fn build_linux_dynamic(dst: &Path, libtcod_sources: &[& 'static str]) {
     pkg_config::find_library("x11").unwrap();
 }
 
+fn build_emscripten_static(libtcod_sources: &[&'static str]) {
+    let config = config_libtcod_static();
+    build_libtcod_objects(config, libtcod_sources);
+}
 
 fn main() {
     let is_crater = option_env!("CRATER_TASK_TYPE");
@@ -308,6 +316,8 @@ fn main() {
         println!("cargo:rustc-link-search={}", dst.display());
         println!("cargo:rustc-link-lib=dylib=SDL2");
         println!("cargo:rustc-link-lib=User32");
+    } else if target.contains("emscripten") {
+        build_emscripten_static(libtcod_sources);
     }
 
     println!("cargo:rustc-link-search={}", dst.display());
